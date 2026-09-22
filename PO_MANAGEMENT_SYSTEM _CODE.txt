@@ -1,0 +1,2168 @@
+
+REPORT ZPO_MANAGEMENT.
+
+
+TABLES: EKKO,
+        EKPO,
+        LFA1,
+        MAKT.
+
+
+*---------------------------------------------------------------------*
+* SELECTION SCREEN
+*---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK B1 WITH FRAME TITLE TEXT-001.
+
+SELECT-OPTIONS:
+  S_EBELN FOR EKKO-EBELN,
+  S_LIFNR FOR EKKO-LIFNR,
+  S_BEDAT FOR EKKO-BEDAT.
+
+SELECTION-SCREEN END OF BLOCK B1.
+
+
+*---------------------------------------------------------------------*
+* REPORT TYPE
+*---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK B2 WITH FRAME TITLE TEXT-002.
+
+PARAMETERS:
+  P_MAIN   RADIOBUTTON GROUP R1 DEFAULT 'X',
+  P_VENDOR RADIOBUTTON GROUP R1.
+
+SELECTION-SCREEN END OF BLOCK B2.
+
+
+*---------------------------------------------------------------------*
+* MAIN PO TYPE
+*---------------------------------------------------------------------*
+
+TYPES: BEGIN OF TY_PO_MAIN,
+
+         EBELN        TYPE EKKO-EBELN,
+         BEDAT        TYPE EKKO-BEDAT,
+         LIFNR        TYPE LFA1-LIFNR,
+         NAME1        TYPE LFA1-NAME1,
+         WAERS        TYPE EKKO-WAERS,
+         ITEM_COUNT   TYPE I,
+         TOTAL_AMOUNT TYPE P DECIMALS 2,
+         STATUS       TYPE CHAR20,
+
+       END OF TY_PO_MAIN.
+
+
+*---------------------------------------------------------------------*
+* DETAIL TYPE
+*---------------------------------------------------------------------*
+
+TYPES: BEGIN OF TY_PO_DETAIL,
+
+         EBELN        TYPE EKKO-EBELN,
+         BEDAT        TYPE EKKO-BEDAT,
+
+         LIFNR        TYPE LFA1-LIFNR,
+         NAME1        TYPE LFA1-NAME1,
+         STRAS        TYPE LFA1-STRAS,
+         ORT01        TYPE LFA1-ORT01,
+         LAND1        TYPE LFA1-LAND1,
+
+         BUKRS        TYPE EKKO-BUKRS,
+         EKORG        TYPE EKKO-EKORG,
+         EKGRP        TYPE EKKO-EKGRP,
+         WAERS        TYPE EKKO-WAERS,
+
+         EBELP        TYPE EKPO-EBELP,
+         MATNR        TYPE EKPO-MATNR,
+         MAKTX        TYPE MAKT-MAKTX,
+
+         MENGE        TYPE EKPO-MENGE,
+         MEINS        TYPE EKPO-MEINS,
+
+         NETPR        TYPE EKPO-NETPR,
+         PEINH        TYPE EKPO-PEINH,
+
+         WERKS        TYPE EKPO-WERKS,
+         LGORT        TYPE EKPO-LGORT,
+
+         ELIKZ        TYPE EKPO-ELIKZ,
+
+         STATUS       TYPE CHAR20,
+
+         TOTAL_AMOUNT TYPE P DECIMALS 2,
+
+       END OF TY_PO_DETAIL.
+
+
+*---------------------------------------------------------------------*
+* VENDOR SUMMARY TYPE
+*---------------------------------------------------------------------*
+
+TYPES: BEGIN OF TY_VENDOR_SUMMARY,
+
+         LIFNR        TYPE LFA1-LIFNR,
+         NAME1        TYPE LFA1-NAME1,
+         WAERS        TYPE EKKO-WAERS,
+
+         PO_COUNT     TYPE I,
+         ITEM_COUNT   TYPE I,
+
+         TOTAL_AMOUNT TYPE P DECIMALS 2,
+
+       END OF TY_VENDOR_SUMMARY.
+
+
+*---------------------------------------------------------------------*
+* INTERNAL TABLES
+*---------------------------------------------------------------------*
+
+DATA: GT_PO_MAIN TYPE TABLE OF TY_PO_MAIN,
+      GS_PO_MAIN TYPE TY_PO_MAIN.
+
+
+DATA: GT_PO_DETAIL TYPE TABLE OF TY_PO_DETAIL,
+      GS_PO_DETAIL TYPE TY_PO_DETAIL.
+
+
+DATA: GT_TEMP_MAIN TYPE TABLE OF TY_PO_MAIN,
+      GS_TEMP_MAIN TYPE TY_PO_MAIN.
+
+
+DATA: GT_VENDOR_SUMMARY TYPE TABLE OF TY_VENDOR_SUMMARY,
+      GS_VENDOR_SUMMARY TYPE TY_VENDOR_SUMMARY.
+
+
+*---------------------------------------------------------------------*
+* VALIDATION VARIABLES
+*---------------------------------------------------------------------*
+
+DATA: LV_EBELN TYPE EKKO-EBELN,
+      LV_LIFNR TYPE LFA1-LIFNR.
+
+
+*---------------------------------------------------------------------*
+* SELECTED PO
+*---------------------------------------------------------------------*
+
+DATA: GV_SELECTED_EBELN TYPE EKKO-EBELN.
+
+
+*---------------------------------------------------------------------*
+* MAIN ALV OBJECTS
+*---------------------------------------------------------------------*
+
+DATA: GO_ALV_MAIN       TYPE REF TO CL_SALV_TABLE,
+      GO_FUNCTIONS_MAIN TYPE REF TO CL_SALV_FUNCTIONS_LIST,
+      GO_COLUMNS_MAIN   TYPE REF TO CL_SALV_COLUMNS_TABLE,
+      GO_COLUMN_MAIN    TYPE REF TO CL_SALV_COLUMN.
+
+
+*---------------------------------------------------------------------*
+* DETAIL ALV OBJECTS
+*---------------------------------------------------------------------*
+
+DATA: GO_ALV_DETAIL       TYPE REF TO CL_SALV_TABLE,
+      GO_FUNCTIONS_DETAIL TYPE REF TO CL_SALV_FUNCTIONS_LIST,
+      GO_COLUMNS_DETAIL   TYPE REF TO CL_SALV_COLUMNS_TABLE,
+      GO_COLUMN_DETAIL    TYPE REF TO CL_SALV_COLUMN.
+
+
+*---------------------------------------------------------------------*
+* EVENT OBJECT
+*---------------------------------------------------------------------*
+
+DATA: GO_EVENTS TYPE REF TO CL_SALV_EVENTS_TABLE.
+
+
+*---------------------------------------------------------------------*
+* EVENT HANDLER
+*---------------------------------------------------------------------*
+
+CLASS LCL_EVENT_HANDLER DEFINITION.
+
+  PUBLIC SECTION.
+
+    METHODS ON_DOUBLE_CLICK
+      FOR EVENT DOUBLE_CLICK OF CL_SALV_EVENTS_TABLE
+      IMPORTING
+        ROW
+        COLUMN.
+
+ENDCLASS.
+
+
+*---------------------------------------------------------------------*
+* EVENT IMPLEMENTATION
+*---------------------------------------------------------------------*
+
+CLASS LCL_EVENT_HANDLER IMPLEMENTATION.
+
+  METHOD ON_DOUBLE_CLICK.
+
+    READ TABLE GT_PO_MAIN
+      INTO GS_PO_MAIN
+      INDEX ROW.
+
+    IF SY-SUBRC = 0.
+
+      GV_SELECTED_EBELN = GS_PO_MAIN-EBELN.
+
+      PERFORM DISPLAY_DETAIL.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+*---------------------------------------------------------------------*
+* EVENT HANDLER OBJECT
+*---------------------------------------------------------------------*
+
+DATA: GO_EVENT_HANDLER TYPE REF TO LCL_EVENT_HANDLER.
+
+
+*---------------------------------------------------------------------*
+* SELECTION SCREEN VALIDATION
+*---------------------------------------------------------------------*
+
+AT SELECTION-SCREEN.
+
+
+*---------------------------------------------------------------------*
+* VALIDATE PO
+*---------------------------------------------------------------------*
+
+  IF S_EBELN-LOW IS NOT INITIAL.
+
+    SELECT SINGLE EBELN
+      INTO LV_EBELN
+      FROM EKKO
+      WHERE EBELN = S_EBELN-LOW.
+
+    IF SY-SUBRC <> 0.
+
+      MESSAGE 'Invalid Purchase Order Number'
+        TYPE 'E'.
+
+    ENDIF.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* VALIDATE VENDOR
+*---------------------------------------------------------------------*
+
+  IF S_LIFNR-LOW IS NOT INITIAL.
+
+    SELECT SINGLE LIFNR
+      INTO LV_LIFNR
+      FROM LFA1
+      WHERE LIFNR = S_LIFNR-LOW.
+
+    IF SY-SUBRC <> 0.
+
+      MESSAGE 'Invalid Vendor Number'
+        TYPE 'E'.
+
+    ENDIF.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* VALIDATE DATE RANGE
+*---------------------------------------------------------------------*
+
+  IF S_BEDAT-LOW IS NOT INITIAL
+     AND S_BEDAT-HIGH IS NOT INITIAL.
+
+    IF S_BEDAT-LOW > S_BEDAT-HIGH.
+
+      MESSAGE 'From Date cannot be greater than To Date'
+        TYPE 'E'.
+
+    ENDIF.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* START OF SELECTION
+*---------------------------------------------------------------------*
+
+START-OF-SELECTION.
+
+
+*---------------------------------------------------------------------*
+* GET DATA
+*---------------------------------------------------------------------*
+
+  PERFORM GET_PO_DATA.
+
+
+*---------------------------------------------------------------------*
+* NO DATA
+*---------------------------------------------------------------------*
+
+  IF GT_PO_DETAIL IS INITIAL.
+
+    MESSAGE 'No Purchase Orders found for the selected criteria'
+      TYPE 'I'.
+
+    STOP.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* MAIN REPORT
+*---------------------------------------------------------------------*
+
+  IF P_MAIN = 'X'.
+
+    PERFORM BUILD_MAIN_RECORDS.
+
+    PERFORM DISPLAY_MAIN_ALV.
+
+
+*---------------------------------------------------------------------*
+* VENDOR REPORT
+*---------------------------------------------------------------------*
+
+  ELSEIF P_VENDOR = 'X'.
+
+    PERFORM BUILD_VENDOR_SUMMARY.
+
+    PERFORM DISPLAY_VENDOR_SUMMARY.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* FORM GET_PO_DATA
+*---------------------------------------------------------------------*
+
+FORM GET_PO_DATA.
+
+  CLEAR GT_PO_DETAIL.
+
+
+*---------------------------------------------------------------------*
+* SELECT PURCHASE ORDER DATA
+*---------------------------------------------------------------------*
+
+  SELECT
+         A~EBELN
+         A~BEDAT
+         A~LIFNR
+
+         C~NAME1
+         C~STRAS
+         C~ORT01
+         C~LAND1
+
+         A~BUKRS
+         A~EKORG
+         A~EKGRP
+         A~WAERS
+
+         B~EBELP
+         B~MATNR
+
+         D~MAKTX
+
+         B~MENGE
+         B~MEINS
+
+         B~NETPR
+         B~PEINH
+
+         B~WERKS
+         B~LGORT
+
+         B~ELIKZ
+
+    INTO TABLE GT_PO_DETAIL
+
+    FROM EKKO AS A
+
+    INNER JOIN EKPO AS B
+      ON A~EBELN = B~EBELN
+
+    LEFT OUTER JOIN LFA1 AS C
+      ON A~LIFNR = C~LIFNR
+
+    LEFT OUTER JOIN MAKT AS D
+      ON B~MATNR = D~MATNR
+     AND D~SPRAS = SY-LANGU
+
+    WHERE A~EBELN IN S_EBELN
+      AND A~LIFNR IN S_LIFNR
+      AND A~BEDAT IN S_BEDAT.
+
+
+*---------------------------------------------------------------------*
+* CHECK RESULT
+*---------------------------------------------------------------------*
+
+  IF SY-SUBRC <> 0
+     OR GT_PO_DETAIL IS INITIAL.
+
+    CLEAR GT_PO_DETAIL.
+
+    RETURN.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* CALCULATE TOTAL AND STATUS
+*---------------------------------------------------------------------*
+
+  LOOP AT GT_PO_DETAIL INTO GS_PO_DETAIL.
+
+
+    IF GS_PO_DETAIL-PEINH IS INITIAL.
+
+      GS_PO_DETAIL-TOTAL_AMOUNT =
+          GS_PO_DETAIL-MENGE
+        * GS_PO_DETAIL-NETPR.
+
+    ELSE.
+
+      GS_PO_DETAIL-TOTAL_AMOUNT =
+          ( GS_PO_DETAIL-MENGE
+          * GS_PO_DETAIL-NETPR )
+          / GS_PO_DETAIL-PEINH.
+
+    ENDIF.
+
+
+*---------------------------------------------------------------------*
+* DELIVERY STATUS
+*---------------------------------------------------------------------*
+
+    IF GS_PO_DETAIL-ELIKZ = 'X'.
+
+      GS_PO_DETAIL-STATUS = 'Completed'.
+
+    ELSE.
+
+      GS_PO_DETAIL-STATUS = 'Open'.
+
+    ENDIF.
+
+
+    MODIFY GT_PO_DETAIL
+      FROM GS_PO_DETAIL.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* FORM BUILD_MAIN_RECORDS
+*---------------------------------------------------------------------*
+
+FORM BUILD_MAIN_RECORDS.
+
+  CLEAR:
+    GT_PO_MAIN,
+    GT_TEMP_MAIN.
+
+
+*---------------------------------------------------------------------*
+* CREATE TEMPORARY RECORDS
+*---------------------------------------------------------------------*
+
+  LOOP AT GT_PO_DETAIL INTO GS_PO_DETAIL.
+
+    CLEAR GS_TEMP_MAIN.
+
+
+    GS_TEMP_MAIN-EBELN =
+      GS_PO_DETAIL-EBELN.
+
+    GS_TEMP_MAIN-BEDAT =
+      GS_PO_DETAIL-BEDAT.
+
+    GS_TEMP_MAIN-LIFNR =
+      GS_PO_DETAIL-LIFNR.
+
+    GS_TEMP_MAIN-NAME1 =
+      GS_PO_DETAIL-NAME1.
+
+    GS_TEMP_MAIN-WAERS =
+      GS_PO_DETAIL-WAERS.
+
+    GS_TEMP_MAIN-ITEM_COUNT =
+      1.
+
+    GS_TEMP_MAIN-TOTAL_AMOUNT =
+      GS_PO_DETAIL-TOTAL_AMOUNT.
+
+    GS_TEMP_MAIN-STATUS =
+      GS_PO_DETAIL-STATUS.
+
+
+    APPEND GS_TEMP_MAIN
+      TO GT_TEMP_MAIN.
+
+  ENDLOOP.
+
+
+*---------------------------------------------------------------------*
+* SORT
+*---------------------------------------------------------------------*
+
+  SORT GT_TEMP_MAIN BY EBELN.
+
+
+*---------------------------------------------------------------------*
+* CREATE ONE RECORD PER PO
+*---------------------------------------------------------------------*
+
+  LOOP AT GT_TEMP_MAIN INTO GS_TEMP_MAIN.
+
+    READ TABLE GT_PO_MAIN
+      INTO GS_PO_MAIN
+      WITH KEY EBELN = GS_TEMP_MAIN-EBELN.
+
+
+    IF SY-SUBRC <> 0.
+
+      APPEND GS_TEMP_MAIN
+        TO GT_PO_MAIN.
+
+    ELSE.
+
+
+      GS_PO_MAIN-ITEM_COUNT =
+          GS_PO_MAIN-ITEM_COUNT
+        + 1.
+
+
+      GS_PO_MAIN-TOTAL_AMOUNT =
+          GS_PO_MAIN-TOTAL_AMOUNT
+        + GS_TEMP_MAIN-TOTAL_AMOUNT.
+
+
+*---------------------------------------------------------------------*
+* OPEN STATUS HAS PRIORITY
+*---------------------------------------------------------------------*
+
+      IF GS_TEMP_MAIN-STATUS = 'Open'.
+
+        GS_PO_MAIN-STATUS = 'Open'.
+
+      ENDIF.
+
+
+      MODIFY GT_PO_MAIN
+        FROM GS_PO_MAIN
+        INDEX SY-TABIX.
+
+    ENDIF.
+
+  ENDLOOP.
+
+
+*---------------------------------------------------------------------*
+* SORT MAIN TABLE
+*---------------------------------------------------------------------*
+
+  SORT GT_PO_MAIN BY EBELN.
+
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* FORM BUILD_VENDOR_SUMMARY
+*---------------------------------------------------------------------*
+
+FORM BUILD_VENDOR_SUMMARY.
+
+  DATA: LV_CURRENT_VENDOR
+          TYPE LFA1-LIFNR.
+
+  DATA: LV_CURRENT_CURRENCY
+          TYPE EKKO-WAERS.
+
+  DATA: LV_CURRENT_PO
+          TYPE EKKO-EBELN.
+
+
+  CLEAR:
+    GT_VENDOR_SUMMARY,
+    GS_VENDOR_SUMMARY,
+    LV_CURRENT_VENDOR,
+    LV_CURRENT_CURRENCY,
+    LV_CURRENT_PO.
+
+
+*---------------------------------------------------------------------*
+* SORT
+*---------------------------------------------------------------------*
+
+  SORT GT_PO_DETAIL
+    BY LIFNR WAERS EBELN EBELP.
+
+
+*---------------------------------------------------------------------*
+* BUILD SUMMARY
+*---------------------------------------------------------------------*
+
+  LOOP AT GT_PO_DETAIL INTO GS_PO_DETAIL.
+
+
+    IF LV_CURRENT_VENDOR IS INITIAL
+       OR LV_CURRENT_VENDOR <> GS_PO_DETAIL-LIFNR
+       OR LV_CURRENT_CURRENCY <> GS_PO_DETAIL-WAERS.
+
+
+*---------------------------------------------------------------------*
+* APPEND PREVIOUS GROUP
+*---------------------------------------------------------------------*
+
+      IF LV_CURRENT_VENDOR IS NOT INITIAL.
+
+        APPEND GS_VENDOR_SUMMARY
+          TO GT_VENDOR_SUMMARY.
+
+      ENDIF.
+
+
+      CLEAR GS_VENDOR_SUMMARY.
+
+
+*---------------------------------------------------------------------*
+* VENDOR
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-LIFNR =
+        GS_PO_DETAIL-LIFNR.
+
+
+*---------------------------------------------------------------------*
+* NAME
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-NAME1 =
+        GS_PO_DETAIL-NAME1.
+
+
+*---------------------------------------------------------------------*
+* CURRENCY
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-WAERS =
+        GS_PO_DETAIL-WAERS.
+
+
+*---------------------------------------------------------------------*
+* FIRST PO
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-PO_COUNT =
+        1.
+
+
+*---------------------------------------------------------------------*
+* FIRST ITEM
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-ITEM_COUNT =
+        1.
+
+
+*---------------------------------------------------------------------*
+* FIRST TOTAL
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-TOTAL_AMOUNT =
+        GS_PO_DETAIL-TOTAL_AMOUNT.
+
+
+      LV_CURRENT_VENDOR =
+        GS_PO_DETAIL-LIFNR.
+
+
+      LV_CURRENT_CURRENCY =
+        GS_PO_DETAIL-WAERS.
+
+
+      LV_CURRENT_PO =
+        GS_PO_DETAIL-EBELN.
+
+
+    ELSE.
+
+
+*---------------------------------------------------------------------*
+* ADD ITEM
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-ITEM_COUNT =
+          GS_VENDOR_SUMMARY-ITEM_COUNT
+        + 1.
+
+
+*---------------------------------------------------------------------*
+* ADD TOTAL
+*---------------------------------------------------------------------*
+
+      GS_VENDOR_SUMMARY-TOTAL_AMOUNT =
+          GS_VENDOR_SUMMARY-TOTAL_AMOUNT
+        + GS_PO_DETAIL-TOTAL_AMOUNT.
+
+
+*---------------------------------------------------------------------*
+* NEW PO
+*---------------------------------------------------------------------*
+
+      IF LV_CURRENT_PO <> GS_PO_DETAIL-EBELN.
+
+        GS_VENDOR_SUMMARY-PO_COUNT =
+            GS_VENDOR_SUMMARY-PO_COUNT
+          + 1.
+
+
+        LV_CURRENT_PO =
+          GS_PO_DETAIL-EBELN.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDLOOP.
+
+
+*---------------------------------------------------------------------*
+* APPEND LAST GROUP
+*---------------------------------------------------------------------*
+
+  IF LV_CURRENT_VENDOR IS NOT INITIAL.
+
+    APPEND GS_VENDOR_SUMMARY
+      TO GT_VENDOR_SUMMARY.
+
+  ENDIF.
+
+
+  SORT GT_VENDOR_SUMMARY
+    BY LIFNR WAERS.
+
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* FORM DISPLAY_VENDOR_SUMMARY
+*---------------------------------------------------------------------*
+
+FORM DISPLAY_VENDOR_SUMMARY.
+
+  DATA: LX_MSG_VENDOR
+          TYPE REF TO CX_SALV_MSG.
+
+  DATA: LX_NOT_FOUND_VENDOR
+          TYPE REF TO CX_SALV_NOT_FOUND.
+
+  DATA: GO_ALV_VENDOR
+          TYPE REF TO CL_SALV_TABLE.
+
+  DATA: GO_FUNCTIONS_VENDOR
+          TYPE REF TO CL_SALV_FUNCTIONS_LIST.
+
+  DATA: GO_COLUMNS_VENDOR
+          TYPE REF TO CL_SALV_COLUMNS_TABLE.
+
+  DATA: GO_COLUMN_VENDOR
+          TYPE REF TO CL_SALV_COLUMN.
+
+  DATA: GO_DISPLAY_VENDOR
+          TYPE REF TO CL_SALV_DISPLAY_SETTINGS.
+
+
+*---------------------------------------------------------------------*
+* CHECK DATA
+*---------------------------------------------------------------------*
+
+  IF GT_VENDOR_SUMMARY IS INITIAL.
+
+    MESSAGE 'No vendor summary data available'
+      TYPE 'I'.
+
+    RETURN.
+
+  ENDIF.
+
+
+  TRY.
+
+
+*---------------------------------------------------------------------*
+* CREATE ALV
+*---------------------------------------------------------------------*
+
+      CALL METHOD CL_SALV_TABLE=>FACTORY
+
+        IMPORTING
+          R_SALV_TABLE = GO_ALV_VENDOR
+
+        CHANGING
+          T_TABLE = GT_VENDOR_SUMMARY.
+
+
+*---------------------------------------------------------------------*
+* STANDARD FUNCTIONS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_VENDOR->GET_FUNCTIONS
+
+        RECEIVING
+          VALUE = GO_FUNCTIONS_VENDOR.
+
+
+      CALL METHOD GO_FUNCTIONS_VENDOR->SET_ALL
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* COLUMNS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_VENDOR->GET_COLUMNS
+
+        RECEIVING
+          VALUE = GO_COLUMNS_VENDOR.
+
+
+      CALL METHOD GO_COLUMNS_VENDOR->SET_OPTIMIZE
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY SETTINGS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_VENDOR->GET_DISPLAY_SETTINGS
+
+        RECEIVING
+          VALUE = GO_DISPLAY_VENDOR.
+
+
+*---------------------------------------------------------------------*
+* ZEBRA STRIPING
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_VENDOR->SET_STRIPED_PATTERN
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* TITLE
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_VENDOR->SET_LIST_HEADER
+
+        EXPORTING
+          VALUE = 'Vendor-Wise Purchase Order Summary'.
+
+
+*---------------------------------------------------------------------*
+* VENDOR
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'LIFNR'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor Number'.
+
+
+*---------------------------------------------------------------------*
+* NAME
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'NAME1'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Name'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor Name'.
+
+
+*---------------------------------------------------------------------*
+* CURRENCY
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'WAERS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Curr.'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Currency'.
+
+
+*---------------------------------------------------------------------*
+* PO COUNT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'PO_COUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'POs'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'PO Count'.
+
+
+*---------------------------------------------------------------------*
+* ITEM COUNT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'ITEM_COUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Items'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Item Count'.
+
+
+*---------------------------------------------------------------------*
+* TOTAL
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_VENDOR->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'TOTAL_AMOUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_VENDOR.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Total'.
+
+
+      CALL METHOD GO_COLUMN_VENDOR->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor Total'.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_VENDOR->DISPLAY.
+
+
+    CATCH CX_SALV_NOT_FOUND
+      INTO LX_NOT_FOUND_VENDOR.
+
+      MESSAGE 'Vendor Summary ALV column was not found'
+        TYPE 'I'.
+
+
+    CATCH CX_SALV_MSG
+      INTO LX_MSG_VENDOR.
+
+      MESSAGE 'Error while displaying Vendor Summary ALV'
+        TYPE 'I'.
+
+  ENDTRY.
+
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* FORM DISPLAY_MAIN_ALV
+*---------------------------------------------------------------------*
+
+FORM DISPLAY_MAIN_ALV.
+
+  DATA: LX_MSG_MAIN
+          TYPE REF TO CX_SALV_MSG.
+
+  DATA: LX_NOT_FOUND_MAIN
+          TYPE REF TO CX_SALV_NOT_FOUND.
+
+  DATA: GO_DISPLAY_MAIN
+          TYPE REF TO CL_SALV_DISPLAY_SETTINGS.
+
+
+*---------------------------------------------------------------------*
+* CHECK DATA
+*---------------------------------------------------------------------*
+
+  IF GT_PO_MAIN IS INITIAL.
+
+    MESSAGE 'No Purchase Order data available'
+      TYPE 'I'.
+
+    RETURN.
+
+  ENDIF.
+
+
+  TRY.
+
+
+*---------------------------------------------------------------------*
+* CREATE ALV
+*---------------------------------------------------------------------*
+
+      CALL METHOD CL_SALV_TABLE=>FACTORY
+
+        IMPORTING
+          R_SALV_TABLE = GO_ALV_MAIN
+
+        CHANGING
+          T_TABLE = GT_PO_MAIN.
+
+
+*---------------------------------------------------------------------*
+* STANDARD FUNCTIONS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_MAIN->GET_FUNCTIONS
+
+        RECEIVING
+          VALUE = GO_FUNCTIONS_MAIN.
+
+
+      CALL METHOD GO_FUNCTIONS_MAIN->SET_ALL
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* COLUMNS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_MAIN->GET_COLUMNS
+
+        RECEIVING
+          VALUE = GO_COLUMNS_MAIN.
+
+
+      CALL METHOD GO_COLUMNS_MAIN->SET_OPTIMIZE
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY SETTINGS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_MAIN->GET_DISPLAY_SETTINGS
+
+        RECEIVING
+          VALUE = GO_DISPLAY_MAIN.
+
+
+*---------------------------------------------------------------------*
+* ZEBRA PATTERN
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_MAIN->SET_STRIPED_PATTERN
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* ALV TITLE
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_MAIN->SET_LIST_HEADER
+
+        EXPORTING
+          VALUE = 'Purchase Order Management'.
+
+
+*---------------------------------------------------------------------*
+* PO NUMBER
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'EBELN'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'PO'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'PO Number'.
+
+
+*---------------------------------------------------------------------*
+* PO DATE
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'BEDAT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Date'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'PO Date'.
+
+
+*---------------------------------------------------------------------*
+* VENDOR
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'LIFNR'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor Number'.
+
+
+*---------------------------------------------------------------------*
+* VENDOR NAME
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'NAME1'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Name'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Vendor Name'.
+
+
+*---------------------------------------------------------------------*
+* CURRENCY
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'WAERS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Curr.'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Currency'.
+
+
+*---------------------------------------------------------------------*
+* ITEM COUNT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'ITEM_COUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Items'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Item Count'.
+
+
+*---------------------------------------------------------------------*
+* TOTAL AMOUNT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'TOTAL_AMOUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Total'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Total Amount'.
+
+
+*---------------------------------------------------------------------*
+* STATUS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_MAIN->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'STATUS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_MAIN.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Status'.
+
+
+      CALL METHOD GO_COLUMN_MAIN->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'PO Status'.
+
+
+*---------------------------------------------------------------------*
+* EVENT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_MAIN->GET_EVENT
+
+        RECEIVING
+          VALUE = GO_EVENTS.
+
+
+      CREATE OBJECT GO_EVENT_HANDLER.
+
+
+      SET HANDLER GO_EVENT_HANDLER->ON_DOUBLE_CLICK
+        FOR GO_EVENTS.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_MAIN->DISPLAY.
+
+
+    CATCH CX_SALV_NOT_FOUND
+      INTO LX_NOT_FOUND_MAIN.
+
+      MESSAGE 'Main ALV column was not found'
+        TYPE 'I'.
+
+
+    CATCH CX_SALV_MSG
+      INTO LX_MSG_MAIN.
+
+      MESSAGE 'Error while displaying Main ALV'
+        TYPE 'I'.
+
+  ENDTRY.
+
+ENDFORM.
+
+
+*---------------------------------------------------------------------*
+* FORM DISPLAY_DETAIL
+*---------------------------------------------------------------------*
+
+FORM DISPLAY_DETAIL.
+
+  DATA: LX_MSG_DETAIL
+          TYPE REF TO CX_SALV_MSG.
+
+  DATA: LX_NOT_FOUND_DETAIL
+          TYPE REF TO CX_SALV_NOT_FOUND.
+
+  DATA: LV_ITEM_COUNT
+          TYPE I.
+
+  DATA: LV_TOTAL_VALUE
+          TYPE P DECIMALS 2.
+
+  DATA: GO_DISPLAY_DETAIL
+          TYPE REF TO CL_SALV_DISPLAY_SETTINGS.
+
+
+*---------------------------------------------------------------------*
+* CLEAR TABLE
+*---------------------------------------------------------------------*
+
+  CLEAR GT_PO_DETAIL.
+
+
+*---------------------------------------------------------------------*
+* GET SELECTED PO
+*---------------------------------------------------------------------*
+
+  SELECT
+         A~EBELN
+         A~BEDAT
+
+         A~LIFNR
+
+         C~NAME1
+         C~STRAS
+         C~ORT01
+         C~LAND1
+
+         A~BUKRS
+         A~EKORG
+         A~EKGRP
+         A~WAERS
+
+         B~EBELP
+         B~MATNR
+
+         D~MAKTX
+
+         B~MENGE
+         B~MEINS
+
+         B~NETPR
+         B~PEINH
+
+         B~WERKS
+         B~LGORT
+
+         B~ELIKZ
+
+    INTO TABLE GT_PO_DETAIL
+
+    FROM EKKO AS A
+
+    INNER JOIN EKPO AS B
+      ON A~EBELN = B~EBELN
+
+    LEFT OUTER JOIN LFA1 AS C
+      ON A~LIFNR = C~LIFNR
+
+    LEFT OUTER JOIN MAKT AS D
+      ON B~MATNR = D~MATNR
+     AND D~SPRAS = SY-LANGU
+
+    WHERE A~EBELN = GV_SELECTED_EBELN.
+
+
+*---------------------------------------------------------------------*
+* CHECK DATA
+*---------------------------------------------------------------------*
+
+  IF GT_PO_DETAIL IS INITIAL.
+
+    MESSAGE 'No details found for selected Purchase Order'
+      TYPE 'I'.
+
+    RETURN.
+
+  ENDIF.
+
+
+*---------------------------------------------------------------------*
+* INITIALIZE
+*---------------------------------------------------------------------*
+
+  CLEAR:
+    LV_ITEM_COUNT,
+    LV_TOTAL_VALUE.
+
+
+*---------------------------------------------------------------------*
+* CALCULATE
+*---------------------------------------------------------------------*
+
+  LOOP AT GT_PO_DETAIL INTO GS_PO_DETAIL.
+
+
+    IF GS_PO_DETAIL-PEINH IS INITIAL.
+
+      GS_PO_DETAIL-TOTAL_AMOUNT =
+          GS_PO_DETAIL-MENGE
+        * GS_PO_DETAIL-NETPR.
+
+    ELSE.
+
+      GS_PO_DETAIL-TOTAL_AMOUNT =
+          ( GS_PO_DETAIL-MENGE
+          * GS_PO_DETAIL-NETPR )
+          / GS_PO_DETAIL-PEINH.
+
+    ENDIF.
+
+
+*---------------------------------------------------------------------*
+* STATUS
+*---------------------------------------------------------------------*
+
+    IF GS_PO_DETAIL-ELIKZ = 'X'.
+
+      GS_PO_DETAIL-STATUS = 'Completed'.
+
+    ELSE.
+
+      GS_PO_DETAIL-STATUS = 'Open'.
+
+    ENDIF.
+
+
+    MODIFY GT_PO_DETAIL
+      FROM GS_PO_DETAIL.
+
+
+    LV_ITEM_COUNT =
+        LV_ITEM_COUNT
+      + 1.
+
+
+    LV_TOTAL_VALUE =
+        LV_TOTAL_VALUE
+      + GS_PO_DETAIL-TOTAL_AMOUNT.
+
+  ENDLOOP.
+
+
+*---------------------------------------------------------------------*
+* READ HEADER RECORD
+*---------------------------------------------------------------------*
+
+  READ TABLE GT_PO_DETAIL
+    INTO GS_PO_DETAIL
+    INDEX 1.
+
+
+*---------------------------------------------------------------------*
+* PO DETAIL HEADER
+*---------------------------------------------------------------------*
+
+  WRITE: / '============================================================'.
+  WRITE: / '                    PURCHASE ORDER DETAILS'.
+  WRITE: / '============================================================'.
+
+  WRITE: / 'Company Code        : ', GS_PO_DETAIL-BUKRS.
+  WRITE: / 'Purchasing Org.     : ', GS_PO_DETAIL-EKORG.
+  WRITE: / 'Purchasing Group    : ', GS_PO_DETAIL-EKGRP.
+
+  WRITE: / 'Vendor Address      : ', GS_PO_DETAIL-STRAS.
+  WRITE: / 'City                : ', GS_PO_DETAIL-ORT01.
+  WRITE: / 'Country             : ', GS_PO_DETAIL-LAND1.
+
+  WRITE: / 'Currency            : ', GS_PO_DETAIL-WAERS.
+
+  WRITE: / 'Total Items         : ', LV_ITEM_COUNT.
+  WRITE: / 'PO Total            : ', LV_TOTAL_VALUE,
+                                      GS_PO_DETAIL-WAERS.
+
+  WRITE: / '============================================================'.
+  WRITE: / '                         ITEM DETAILS'.
+  WRITE: / '============================================================'.
+
+  SKIP.
+
+
+*---------------------------------------------------------------------*
+* CREATE DETAIL ALV
+*---------------------------------------------------------------------*
+
+  TRY.
+
+
+      CALL METHOD CL_SALV_TABLE=>FACTORY
+
+        IMPORTING
+          R_SALV_TABLE = GO_ALV_DETAIL
+
+        CHANGING
+          T_TABLE = GT_PO_DETAIL.
+
+
+*---------------------------------------------------------------------*
+* STANDARD FUNCTIONS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_DETAIL->GET_FUNCTIONS
+
+        RECEIVING
+          VALUE = GO_FUNCTIONS_DETAIL.
+
+
+      CALL METHOD GO_FUNCTIONS_DETAIL->SET_ALL
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* COLUMNS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_DETAIL->GET_COLUMNS
+
+        RECEIVING
+          VALUE = GO_COLUMNS_DETAIL.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->SET_OPTIMIZE
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY SETTINGS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_DETAIL->GET_DISPLAY_SETTINGS
+
+        RECEIVING
+          VALUE = GO_DISPLAY_DETAIL.
+
+
+*---------------------------------------------------------------------*
+* ZEBRA STRIPING
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_DETAIL->SET_STRIPED_PATTERN
+
+        EXPORTING
+          VALUE = 'X'.
+
+
+*---------------------------------------------------------------------*
+* TITLE
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_DISPLAY_DETAIL->SET_LIST_HEADER
+
+        EXPORTING
+          VALUE = 'Purchase Order Item Details'.
+
+
+*---------------------------------------------------------------------*
+* HIDE REPEATED HEADER FIELDS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'EBELN'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'BEDAT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'LIFNR'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'NAME1'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+*---------------------------------------------------------------------*
+* HIDE TECHNICAL DELIVERY INDICATOR
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'ELIKZ'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+*---------------------------------------------------------------------*
+* HIDE TECHNICAL ADDRESS FIELDS FROM ALV
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'STRAS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'ORT01'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'LAND1'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+*---------------------------------------------------------------------*
+* HIDE COMPANY INFORMATION FROM ITEM ALV
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'BUKRS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'EKORG'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'EKGRP'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+*---------------------------------------------------------------------*
+* HIDE CURRENCY FROM EACH ITEM
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'WAERS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_VISIBLE
+        EXPORTING
+          VALUE = ' '.
+
+
+*---------------------------------------------------------------------*
+* ITEM NUMBER
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'EBELP'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Item'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'PO Item'.
+
+
+*---------------------------------------------------------------------*
+* MATERIAL
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'MATNR'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Material'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Material Number'.
+
+
+*---------------------------------------------------------------------*
+* DESCRIPTION
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'MAKTX'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Desc'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Material Description'.
+
+
+*---------------------------------------------------------------------*
+* QUANTITY
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'MENGE'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Qty'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Quantity'.
+
+
+*---------------------------------------------------------------------*
+* UNIT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'MEINS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Unit'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Unit'.
+
+
+*---------------------------------------------------------------------*
+* NET PRICE
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'NETPR'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Price'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Net Price'.
+
+
+*---------------------------------------------------------------------*
+* PRICE UNIT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'PEINH'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Per'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Price Unit'.
+
+
+*---------------------------------------------------------------------*
+* PLANT
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'WERKS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Plant'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Plant'.
+
+
+*---------------------------------------------------------------------*
+* STORAGE LOCATION
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'LGORT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'SLoc'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Storage Location'.
+
+
+*---------------------------------------------------------------------*
+* ITEM TOTAL
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'TOTAL_AMOUNT'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Total'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Item Total'.
+
+
+*---------------------------------------------------------------------*
+* STATUS
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_COLUMNS_DETAIL->GET_COLUMN
+
+        EXPORTING
+          COLUMNNAME = 'STATUS'
+
+        RECEIVING
+          VALUE = GO_COLUMN_DETAIL.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_SHORT_TEXT
+
+        EXPORTING
+          VALUE = 'Status'.
+
+
+      CALL METHOD GO_COLUMN_DETAIL->SET_MEDIUM_TEXT
+
+        EXPORTING
+          VALUE = 'Delivery Status'.
+
+
+*---------------------------------------------------------------------*
+* DISPLAY DETAIL ALV
+*---------------------------------------------------------------------*
+
+      CALL METHOD GO_ALV_DETAIL->DISPLAY.
+
+
+    CATCH CX_SALV_NOT_FOUND
+      INTO LX_NOT_FOUND_DETAIL.
+
+      MESSAGE 'Detail ALV column was not found'
+        TYPE 'I'.
+
+
+    CATCH CX_SALV_MSG
+      INTO LX_MSG_DETAIL.
+
+      MESSAGE 'Error while displaying Detail ALV'
+        TYPE 'I'.
+
+  ENDTRY.
+
+ENDFORM.
